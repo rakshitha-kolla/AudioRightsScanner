@@ -184,7 +184,7 @@ class ACRCloudService:
         
         return {'copyrighted': None, 'error': f'Invalid response: {result}'}
     def identify_with_timeline(self, audio_file_path,
-                           chunk_seconds=10,
+                           chunk_seconds=6,
                            overlap_seconds=2):
 
         import math
