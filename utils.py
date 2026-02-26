@@ -57,19 +57,19 @@ class ResultHandler:
         """Format result for display"""
 
         if detection_result.get('error'):
-            return f"❌ Error: {detection_result['error']}"
+            return f" Error: {detection_result['error']}"
 
         if detection_result.get('copyrighted') is None:
-            return "⚠️  Unable to determine copyright status"
+            return " Unable to determine copyright status"
 
         if detection_result.get('copyrighted'):
 
             segments = detection_result.get('segments', [])
 
             if not segments:
-                return "⚠️  Copyrighted music detected but no segment info available"
+                return " Copyrighted music detected but no segment info available"
 
-                output = "\n✓ COPYRIGHTED MUSIC DETECTED\n"
+                output = "\n COPYRIGHTED MUSIC DETECTED\n"
                 output += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 
                 for i, seg in enumerate(segments, 1):
@@ -90,4 +90,4 @@ class ResultHandler:
                 return output
 
         else:
-            return "✗ NO COPYRIGHTED MUSIC DETECTED - Safe to use"
+            return " NO COPYRIGHTED MUSIC DETECTED - Safe to use"
