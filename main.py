@@ -94,7 +94,6 @@ async def detect_from_file(audio_file: UploadFile = File(...)):
 
         logger.info(f"File saved: {file_path}")
 
-        # ── Choose detection method ────────────────────────────────
         if YAMNET_AVAILABLE:
             logger.info("Using YAMNet + Chroma + ACRCloud pipeline")
             detection_result = acr_service.identify_with_yamnet(file_path)
