@@ -216,19 +216,19 @@ button {
 }
 
 .status-found {
-    background: rgba(16, 185, 129, 0.2);
+    background: rgba(255,255,255,0.92);
     color: var(--success);
     border: 1px solid var(--success);
 }
 
 .status-not-found {
-    background: rgba(245, 158, 11, 0.2);
+    background:  rgba(255,255,255,0.92);
     color: var(--warning);
     border: 1px solid var(--warning);
 }
 
 .status-error {
-    background: rgba(239, 68, 68, 0.2);
+    background:  rgba(255,255,255,0.92);
     color: var(--danger);
     border: 1px solid var(--danger);
 }
@@ -236,7 +236,7 @@ button {
 /* ==================== MATCH CARD ==================== */
 
 .match-card {
-    background: rgba(15, 23, 42, 0.8);
+    background:  rgba(255,255,255,0.92);
     border-left: 4px solid var(--primary);
     padding: 20px;
     border-radius: 8px;
@@ -266,7 +266,7 @@ button {
     display: flex;
     justify-content: space-between;
     padding: 8px 12px;
-    background: rgba(0, 102, 255, 0.1);
+    background:  rgba(255,255,255,0.92);
     border-radius: 6px;
     font-size: 12px;
 }
