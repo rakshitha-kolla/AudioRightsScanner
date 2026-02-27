@@ -19,14 +19,18 @@ logger = logging.getLogger(__name__)
 # Check if YAMNet dependencies are available
 YAMNET_AVAILABLE = False
 try:
-    import tensorflow
+    import tflite_runtime.interpreter as _tflite
     import librosa
-    import tensorflow_hub
     YAMNET_AVAILABLE = True
-    logger.info(" YAMNet dependencies available (tensorflow, librosa)")
-except ImportError as _yamnet_import_err:
-    logger.warning(f" YAMNet dependencies not found ({_yamnet_import_err}). Will fall back to timeline chunking.")
-    logger.warning("   Install with: pip install tensorflow tensorflow-hub librosa")
+    logger.info(" YAMNet TFLite dependencies available")
+except ImportError:
+    try:
+        import tensorflow.lite as _tflite
+        import librosa
+        YAMNET_AVAILABLE = True
+        logger.info("YAMNet TFLite (via tensorflow) available")
+    except ImportError as _err:
+        logger.warning(f" YAMNet not available ({_err}). Falling back to timeline chunking.")
 
 # Initialize FastAPI
 app = FastAPI(
@@ -34,6 +38,7 @@ app = FastAPI(
     description="Detect copyrighted music using ACRCloud API",
     version="3.0.0"
 )
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -46,12 +51,35 @@ app.add_middleware(
 # Initialize service
 try:
     acr_service = ACRCloudService(ACR_ACCESS_KEY, ACR_ACCESS_SECRET, ACR_HOST)
-    logger.info(" ACRCloud service initialized")
+    logger.info("ACRCloud service initialized")
 except Exception as e:
     logger.error(f" Failed to initialize ACRCloud service: {e}")
 
 # Ensure folders exist
 FileHandler.ensure_folders()
+yamnet_detector_instance = None
+
+@app.on_event("startup")
+async def preload_yamnet():
+   
+    global yamnet_detector_instance 
+    if not YAMNET_AVAILABLE:
+        return
+
+    def _load():
+        global yamnet_detector_instance
+        try:
+            logger.info("Pre-loading YAMNet model in background...")
+            from yamnet_detector import YAMNetDetector
+            detector = YAMNetDetector()
+            detector.load_model()
+            yamnet_detector_instance = detector
+            logger.info("YAMNet model ready")
+        except Exception as e:
+            logger.warning(f" YAMNet preload failed: {e}")
+
+    import threading
+    threading.Thread(target=_load, daemon=True).start()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -71,12 +99,51 @@ async def health_check():
         "version": "3.0.0"
     }
 
+import uuid
+import threading
+
+jobs = {}
+
+def run_detection_job(job_id: str, file_path: str, filename: str):
+    try:
+        jobs[job_id]["status"] = "processing"
+
+        if YAMNET_AVAILABLE:
+            logger.info("Using YAMNet + Chroma + ACRCloud pipeline")
+            import time
+            waited = 0
+            while yamnet_detector_instance is None and waited < 60:
+                logger.info("Waiting for YAMNet to finish loading...")
+                time.sleep(3)
+                waited += 3
+            detection_result = acr_service.identify_with_yamnet(
+                file_path,
+                detector_instance=yamnet_detector_instance
+            )
+            detection_result["detection_method"] = "yamnet"
+        else:
+            logger.info("Using timeline chunking")
+            detection_result = acr_service.identify_with_timeline(file_path)
+            detection_result["detection_method"] = "timeline"
+
+        result_file = ResultHandler.save_result(filename, detection_result)
+        detection_result["result_file"] = result_file
+
+        jobs[job_id]["status"] = "done"
+        jobs[job_id]["result"] = detection_result
+        logger.info(f" Job {job_id} complete")
+
+    except Exception as e:
+        logger.error(f" Job {job_id} failed: {e}")
+        jobs[job_id]["status"] = "error"
+        jobs[job_id]["error"]  = str(e)
+
+
 @app.post("/api/detect")
 async def detect_from_file(audio_file: UploadFile = File(...)):
     try:
         logger.info(f"Received upload: {audio_file.filename}")
 
-        # Validate format
         file_ext = audio_file.filename.split('.')[-1].lower()
         if file_ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(
@@ -84,7 +151,6 @@ async def detect_from_file(audio_file: UploadFile = File(...)):
                 detail=f"Invalid audio format. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
             )
 
-        # Save uploaded file
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         file_path = os.path.join(UPLOAD_FOLDER, audio_file.filename)
 
@@ -94,30 +160,32 @@ async def detect_from_file(audio_file: UploadFile = File(...)):
 
         logger.info(f"File saved: {file_path}")
 
-        if YAMNET_AVAILABLE:
-            logger.info("Using YAMNet + Chroma + ACRCloud pipeline")
-            detection_result = acr_service.identify_with_yamnet(file_path)
-            detection_result["detection_method"] = "yamnet"
-        else:
-            logger.info("Using timeline chunking (YAMNet not available)")
-            detection_result = acr_service.identify_with_timeline(file_path)
-            detection_result["detection_method"] = "timeline"
+        job_id = str(uuid.uuid4())
+        jobs[job_id] = {"status": "queued", "result": None, "error": None}
 
-        # Save result
-        result_file = ResultHandler.save_result(audio_file.filename, detection_result)
-        logger.info(f"Result saved: {result_file}")
+        thread = threading.Thread(
+            target=run_detection_job,
+            args=(job_id, file_path, audio_file.filename),
+            daemon=True
+        )
+        thread.start()
 
-        detection_result["result_file"] = result_file
-        return detection_result
+        logger.info(f"Job {job_id} started")
+        return {"job_id": job_id, "status": "queued"}
 
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"✗ Detection error: {str(e)}")
+        logger.error(f" Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── Force-use a specific method (useful for testing) ──────────────
+@app.get("/api/detect/status/{job_id}")
+async def get_job_status(job_id: str):
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return jobs[job_id]
+
 
 @app.post("/api/detect/yamnet")
 async def detect_yamnet_only(
@@ -174,8 +242,6 @@ async def detect_timeline_only(audio_file: UploadFile = File(...)):
 
     return result
 
-
-# ── Other existing endpoints (unchanged) ──────────────────────────
 
 @app.post("/api/detect-url")
 async def detect_from_path(file_path: str):
