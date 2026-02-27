@@ -178,17 +178,20 @@ class ACRCloudService:
         except Exception as e:
             return {"copyrighted": None, "error": str(e)}
 
-    def _merge_segments(self, segments, gap_threshold=3):
+    def merge_overlapping_segments(segments):
         if not segments:
             return []
+
         segments.sort(key=lambda x: x["start"])
         merged = [segments[0]]
-        for seg in segments[1:]:
+
+        for current in segments[1:]:
             last = merged[-1]
-            if seg["start"] - last["end"] <= gap_threshold:
-                last["end"] = seg["end"]
+
+            if current["start"] <= last["end"]:
+                if current["duration"] > last["duration"]:
+                    merged[-1] = current
             else:
-                merged.append(seg)
-        for seg in merged:
-            seg["duration"] = round(seg["end"] - seg["start"], 2)
+                merged.append(current)
+
         return merged
