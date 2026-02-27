@@ -16,7 +16,7 @@
         </header>
 
         <div class="container">
-            <div class="main-grid">
+            <div>
                 <div class="card">
                     <h2>Select Audio File</h2>
                     <div class="upload-zone" id="uploadZone">
@@ -28,19 +28,9 @@
                     </div>
                 </div>
 
-                <div class="card">
-                    <h2>Configuration</h2>
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 12px; text-transform: uppercase;">API Status</label>
-                        <button class="btn-secondary" id="healthBtn" style="width: 100%;">Check Health</button>
-                    </div>
-                    <div id="healthStatus"></div>
-                </div>
-            </div>
-
             <div class="button-group">
                 <button class="btn-primary" id="detectBtn">Detect Copyright</button>
-                <button class="btn-secondary" id="resetBtn">Reset</button>
+                <button class="btn-primary" id="resetBtn">Reset</button>
             </div>
 
             <div class="results-section">
@@ -71,7 +61,7 @@
     </div>
 
     <script>
-        const API_URL = window.location.origin;
+        const API_URL = "https://audiorightsscanner.onrender.com";
         let selectedFile = null;
         let stats = { processed: 0, copyrighted: 0 };
 

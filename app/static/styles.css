@@ -1,18 +1,13 @@
-/* Audio Copyright Detector - Stylesheet */
-
 :root {
-    --primary: #0066ff;
-    --primary-dark: #0052cc;
-    --accent: #ff3366;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --bg-dark: #0f172a;
-    --bg-darker: #020617;
-    --bg-card: #1e293b;
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --border: #334155;
+    --primary: #C9A84C;
+    --primary-dark: #B8923B;
+    --accent: #C9A84C;
+    --bg-dark: #FDFCFA;
+    --bg-darker: #F5F3EF;
+    --bg-card: #FFFFFF;
+    --text-primary: #1C1A17;
+    --text-secondary: #6B6560;
+    --border: #EDEBE7;
 }
 
 * {
@@ -23,7 +18,7 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-darker) 100%);
+    background: var(--bg-dark);
     color: var(--text-primary);
     min-height: 100vh;
 }
@@ -37,7 +32,7 @@ body {
 /* ==================== HEADER ==================== */
 
 header {
-    background: rgba(30, 41, 59, 0.9);
+    background: rgba(255,255,255,0.92);
     backdrop-filter: blur(10px);
     padding: 20px 0;
     border-bottom: 1px solid var(--border);
@@ -53,10 +48,7 @@ header {
 .logo {
     font-size: 32px;
     font-weight: 900;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
     margin-bottom: 5px;
 }
 
@@ -115,17 +107,17 @@ header {
     text-align: center;
     cursor: pointer;
     transition: all 0.3s ease;
-    background: rgba(0, 102, 255, 0.05);
+    background: rgba(201, 168, 76, 0.04);
 }
 
 .upload-zone:hover {
-    border-color: var(--accent);
-    background: rgba(255, 51, 102, 0.05);
+    border-color: var(--primary);
+    background: rgba(201, 168, 76, 0.08);
 }
 
 .upload-zone.dragover {
-    border-color: var(--accent);
-    background: rgba(255, 51, 102, 0.1);
+    border-color: var(--primary);
+    background: rgba(201, 168, 76, 0.12);
     transform: scale(1.02);
 }
 
@@ -172,7 +164,7 @@ button {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    background: var(--primary);
     color: white;
 }
 
@@ -332,10 +324,7 @@ button {
 .stat-number {
     font-size: 36px;
     font-weight: 900;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
     margin-bottom: 8px;
 }
 
