@@ -3,23 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎵 Audio Copyright Detector</title>
-   <link rel="stylesheet" href="/static/styles.css">
+    <title>Audio Copyright Detector</title>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
     <div class="app">
         <header>
             <div class="header-content">
-                <div class="logo">🎵 Audio Copyright Detector</div>
+                <div class="logo">Audio Copyright Detector</div>
                 <div class="tagline">Detect copyrighted music using ACRCloud API</div>
             </div>
         </header>
 
         <div class="container">
             <div class="main-grid">
-                <!-- Upload Section -->
                 <div class="card">
-                    <h2>📁 Select Audio File</h2>
+                    <h2>Select Audio File</h2>
                     <div class="upload-zone" id="uploadZone">
                         <div class="upload-icon">↓</div>
                         <p><strong>Drag & Drop</strong> your audio file here</p>
@@ -29,26 +28,21 @@
                     </div>
                 </div>
 
-                <!-- API Config Section -->
                 <div class="card">
-                    <h2>⚙️ Configuration</h2>
+                    <h2>Configuration</h2>
                     <div style="margin-bottom: 20px;">
                         <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 12px; text-transform: uppercase;">API Status</label>
-                        <button class="btn-secondary" id="healthBtn" style="width: 100%;">
-                            Check Health
-                        </button>
+                        <button class="btn-secondary" id="healthBtn" style="width: 100%;">Check Health</button>
                     </div>
                     <div id="healthStatus"></div>
                 </div>
             </div>
 
-            <!-- Action Buttons -->
             <div class="button-group">
-                <button class="btn-primary" id="detectBtn">🔍 Detect Copyright</button>
-                <button class="btn-secondary" id="resetBtn">🔄 Reset</button>
+                <button class="btn-primary" id="detectBtn">Detect Copyright</button>
+                <button class="btn-secondary" id="resetBtn">Reset</button>
             </div>
 
-            <!-- Results Section -->
             <div class="results-section">
                 <h3 style="margin-bottom: 20px; font-size: 20px;">Detection Results</h3>
                 <div id="results">
@@ -59,7 +53,6 @@
                 </div>
             </div>
 
-            <!-- Statistics -->
             <div class="stats-grid" id="statsGrid" style="display: none;">
                 <div class="stat-card">
                     <div class="stat-number" id="statProcessed">0</div>
@@ -82,97 +75,97 @@
         let selectedFile = null;
         let stats = { processed: 0, copyrighted: 0 };
 
-        // Upload Zone
         const uploadZone = document.getElementById('uploadZone');
         const fileInput = document.getElementById('fileInput');
 
         uploadZone.addEventListener('click', () => fileInput.click());
-
-        uploadZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZone.classList.add('dragover');
-        });
-
-        uploadZone.addEventListener('dragleave', () => {
-            uploadZone.classList.remove('dragover');
-        });
-
-        uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('dragover');
-            handleFile(e.dataTransfer.files[0]);
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            handleFile(e.target.files[0]);
-        });
+        uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => { e.preventDefault(); uploadZone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
 
         function handleFile(file) {
             if (!file) return;
-            if (!file.type.startsWith('audio/')) {
-                alert('Please select an audio file');
-                return;
-            }
+            if (!file.type.startsWith('audio/')) { alert('Please select an audio file'); return; }
             selectedFile = file;
-            document.getElementById('fileName').textContent = `✓ ${file.name}`;
+            document.getElementById('fileName').textContent = file.name;
         }
 
-        // Health Check
         document.getElementById('healthBtn').addEventListener('click', async () => {
             try {
-                const response = await fetch(`${API_URL}/api/health`);
-                const data = await response.json();
-                document.getElementById('healthStatus').innerHTML = `
-                    <div class="alert alert-success">
-                        ✓ API is healthy
-                    </div>
-                `;
-            } catch (error) {
-                document.getElementById('healthStatus').innerHTML = `
-                    <div class="alert alert-error">
-                        ✗ Cannot connect to API
-                    </div>
-                `;
+                await fetch(`${API_URL}/api/health`);
+                document.getElementById('healthStatus').innerHTML = '<div class="alert alert-success">API is healthy</div>';
+            } catch {
+                document.getElementById('healthStatus').innerHTML = '<div class="alert alert-error">Cannot connect to API</div>';
             }
         });
 
-        // Detect
         document.getElementById('detectBtn').addEventListener('click', async () => {
-            if (!selectedFile) {
-                alert('Please select an audio file');
-                return;
-            }
+            if (!selectedFile) { alert('Please select an audio file'); return; }
 
             const resultsDiv = document.getElementById('results');
-            resultsDiv.innerHTML = `
-                <div class="alert alert-success">
-                    <div class="loading-spinner"></div>
-                    <span>Analyzing audio...</span>
-                </div>
-            `;
+
+            const setStatus = (msg) => {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-success" style="display:flex;align-items:center;gap:12px;">
+                        <div class="loading-spinner"></div>
+                        <span>${msg}</span>
+                    </div>`;
+            };
+
+            setStatus('Uploading audio file...');
 
             try {
                 const formData = new FormData();
                 formData.append('audio_file', selectedFile);
 
-                const response = await fetch(`${API_URL}/api/detect`, {
-                    method: 'POST',
-                    body: formData
-                });
+                const uploadRes = await fetch(`${API_URL}/api/detect`, { method: 'POST', body: formData });
+                const uploadData = await uploadRes.json();
 
-                const data = await response.json();
+                console.log('Upload response:', uploadData);
+
+                if (!uploadData.job_id) {
+                    displayResults(uploadData);
+                    updateStats(uploadData);
+                    return;
+                }
+
+                const job_id = uploadData.job_id;
+                setStatus('Analyzing audio... this may take 1-2 minutes.');
+
+                let data = null;
+                let attempts = 0;
+                const maxAttempts = 120;
+
+                while (attempts < maxAttempts) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    attempts++;
+
+                    const statusRes = await fetch(`${API_URL}/api/detect/status/${job_id}`);
+                    const statusData = await statusRes.json();
+
+                    console.log(`Poll ${attempts}:`, statusData);
+
+                    if (statusData.status === 'done') {
+                        data = statusData.result;
+                        break;
+                    } else if (statusData.status === 'error') {
+                        throw new Error(statusData.error || 'Detection failed');
+                    } else {
+                        setStatus(`Analyzing audio... (${attempts * 2}s elapsed)`);
+                    }
+                }
+
+                if (!data) throw new Error('Detection timed out. Try a shorter file.');
+
                 displayResults(data);
                 updateStats(data);
+
             } catch (error) {
-                resultsDiv.innerHTML = `
-                    <div class="alert alert-error">
-                        ✗ Error: ${error.message}
-                    </div>
-                `;
+                resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
             }
         });
 
-        // Reset
         document.getElementById('resetBtn').addEventListener('click', () => {
             selectedFile = null;
             fileInput.value = '';
@@ -181,63 +174,39 @@
                 <div class="empty-state">
                     <div class="empty-icon">🎧</div>
                     <p>Select an audio file and click "Detect Copyright" to begin</p>
-                </div>
-            `;
+                </div>`;
         });
+
         function displayResults(data) {
             const resultsDiv = document.getElementById('results');
+            console.log('Displaying results:', data);
             let html = '';
 
-            if (data.copyrighted === true && data.segments?.length > 0) {
-                html = `
-                    <div class="status-badge status-found">
-                        ✓ Copyrighted Music Detected
-                    </div>
-                `;
-
+            if (data.copyrighted === true && data.segments && data.segments.length > 0) {
+                html = '<div class="status-badge status-found">Copyrighted Music Detected</div>';
                 data.segments.forEach(seg => {
                     const music = seg.music || {};
-
                     html += `
                         <div class="match-card">
                             <div class="match-title">${music.title || 'Unknown'}</div>
                             <div class="match-artist">${music.artist || 'Unknown'}</div>
                             <div class="match-details">
-                                <div class="detail">
-                                    <span class="detail-label">Start</span>
-                                    <span class="detail-value">${seg.start.toFixed(2)}s</span>
-                                </div>
-                                <div class="detail">
-                                    <span class="detail-label">End</span>
-                                    <span class="detail-value">${seg.end.toFixed(2)}s</span>
-                                </div>
-                                <div class="detail">
-                                    <span class="detail-label">Duration</span>
-                                    <span class="detail-value">${seg.duration.toFixed(2)}s</span>
-                                </div>
+                                <div class="detail"><span class="detail-label">Start</span><span class="detail-value">${seg.start.toFixed(2)}s</span></div>
+                                <div class="detail"><span class="detail-label">End</span><span class="detail-value">${seg.end.toFixed(2)}s</span></div>
+                                <div class="detail"><span class="detail-label">Duration</span><span class="detail-value">${seg.duration.toFixed(2)}s</span></div>
                             </div>
-                        </div>
-                    `;
+                        </div>`;
                 });
-
             } else if (data.copyrighted === false) {
                 html = `
-                    <div class="status-badge status-not-found">
-                        ✗ No Copyrighted Music
-                    </div>
-                    <div style="padding: 20px; text-align: center;">
-                        Safe to use!
-                    </div>
-                `;
+                    <div class="status-badge status-not-found">No Copyrighted Music</div>
+                    <div style="padding: 20px; text-align: center;">Safe to use!</div>`;
             } else if (data.error) {
                 html = `
-                    <div class="status-badge status-error">
-                        ✗ Error
-                    </div>
-                    <div class="alert alert-error">
-                        ${data.error}
-                    </div>
-                `;
+                    <div class="status-badge status-error">Error</div>
+                    <div class="alert alert-error">${data.error}</div>`;
+            } else {
+                html = `<div class="alert alert-error">Unexpected response: ${JSON.stringify(data)}</div>`;
             }
 
             resultsDiv.innerHTML = html;
@@ -245,22 +214,14 @@
 
         function updateStats(data) {
             stats.processed++;
-            if (data.copyrighted === true) {
-                stats.copyrighted++;
-            }
-
+            if (data.copyrighted === true) stats.copyrighted++;
             document.getElementById('statProcessed').textContent = stats.processed;
             document.getElementById('statCopyrighted').textContent = stats.copyrighted;
-            document.getElementById('statSuccess').textContent = 
-                Math.round((stats.copyrighted / stats.processed) * 100) + '%';
-
+            document.getElementById('statSuccess').textContent = Math.round((stats.copyrighted / stats.processed) * 100) + '%';
             document.getElementById('statsGrid').style.display = 'grid';
         }
 
-        // Auto-check health on load
-        window.addEventListener('load', async () => {
-            document.getElementById('healthBtn').click();
-        });
+        window.addEventListener('load', () => document.getElementById('healthBtn').click());
     </script>
 </body>
 </html>

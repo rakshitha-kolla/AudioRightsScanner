@@ -1,7 +1,7 @@
 import os
 import json
 from datetime import datetime
-from config import UPLOAD_FOLDER, RESULTS_FOLDER, ALLOWED_EXTENSIONS
+from .config import UPLOAD_FOLDER, RESULTS_FOLDER, ALLOWED_EXTENSIONS
 
 class FileHandler:
     """Handle file operations"""
