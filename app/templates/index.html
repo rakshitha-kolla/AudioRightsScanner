@@ -81,15 +81,6 @@
             document.getElementById('fileName').textContent = file.name;
         }
 
-        document.getElementById('healthBtn').addEventListener('click', async () => {
-            try {
-                await fetch(`${API_URL}/api/health`);
-                document.getElementById('healthStatus').innerHTML = '<div class="alert alert-success">API is healthy</div>';
-            } catch {
-                document.getElementById('healthStatus').innerHTML = '<div class="alert alert-error">Cannot connect to API</div>';
-            }
-        });
-
         document.getElementById('detectBtn').addEventListener('click', async () => {
             if (!selectedFile) { alert('Please select an audio file'); return; }
 
@@ -142,7 +133,7 @@
                     } else if (statusData.status === 'error') {
                         throw new Error(statusData.error || 'Detection failed');
                     } else {
-                        setStatus(`Analyzing audio... (${attempts * 2}s elapsed)`);
+                        setStatus(`Analyzing audio...`);
                     }
                 }
 
@@ -210,8 +201,13 @@
             document.getElementById('statSuccess').textContent = Math.round((stats.copyrighted / stats.processed) * 100) + '%';
             document.getElementById('statsGrid').style.display = 'grid';
         }
-
-        window.addEventListener('load', () => document.getElementById('healthBtn').click());
+        window.addEventListener('load', async () => {
+            try {
+                await fetch(`${API_URL}/api/health`);
+            } catch (e) {
+                console.log('API health check failed');
+            }
+        });
     </script>
 </body>
 </html>
