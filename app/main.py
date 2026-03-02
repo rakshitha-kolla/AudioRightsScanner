@@ -5,7 +5,7 @@ import uuid
 import threading
 import time
 from datetime import datetime
-
+import tempfile
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -115,6 +115,13 @@ def run_detection_job(job_id, file_path, filename):
         logger.error(f"Job {job_id} failed: {e}")
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = str(e)
+    finally:
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logger.info(f"Temporary file {file_path} deleted")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to delete temporary file {file_path}: {cleanup_error}")
 
 
 @app.post("/api/detect")
@@ -122,12 +129,13 @@ async def detect_from_file(audio_file: UploadFile = File(...)):
     file_ext = audio_file.filename.split('.')[-1].lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Invalid format. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
-
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    file_path = os.path.join(UPLOAD_FOLDER, audio_file.filename)
-
-    with open(file_path, "wb") as f:
-        f.write(await audio_file.read())
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as tmp:
+            tmp.write(await audio_file.read())
+            file_path = tmp.name
+    except Exception as e:
+        logger.error(f"Failed to create temporary file: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error while handling file")
 
     job_id = str(uuid.uuid4())
     jobs[job_id] = {"status": "queued", "result": None, "error": None}

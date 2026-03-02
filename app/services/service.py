@@ -184,14 +184,25 @@ class ACRCloudService:
 
         segments.sort(key=lambda x: x["start"])
         merged = [segments[0]]
-
         for current in segments[1:]:
             last = merged[-1]
+            time_close = current["start"] - last["end"] <= gap_threshold
+            current_music = current.get("music", {})
+            last_music = last.get("music", {})
 
-            if current["start"] <= last["end"]:
-                if current["duration"] > last["duration"]:
-                    merged[-1] = current
+            current_acrid = current_music.get("acrid")
+            last_acrid = last_music.get("acrid")
+
+            same_acrid = current_acrid and last_acrid and current_acrid == last_acrid
+            same_artist = current_music.get("artist") == last_music.get("artist")
+            same_title = (
+                current_music.get("title", "").strip().lower()
+                == last_music.get("title", "").strip().lower()
+            )
+
+            if time_close and (same_acrid or (same_artist and same_title)):
+                last["end"] = max(last["end"], current["end"])
+                last["duration"] = round(last["end"] - last["start"], 2)
             else:
                 merged.append(current)
-
         return merged
