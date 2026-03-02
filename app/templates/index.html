@@ -61,7 +61,7 @@
     </div>
 
     <script>
-        const API_URL = "https://audiorightsscanner.onrender.com";
+        const API_URL = window.location.origin;
         let selectedFile = null;
         let stats = { processed: 0, copyrighted: 0 };
 
@@ -101,6 +101,12 @@
                 formData.append('audio_file', selectedFile);
 
                 const uploadRes = await fetch(`${API_URL}/api/detect`, { method: 'POST', body: formData });
+                
+                if (!uploadRes.ok) {
+                    const errorText = await uploadRes.text();
+                    throw new Error(`Upload failed (${uploadRes.status}): ${errorText || uploadRes.statusText}`);
+                }
+                
                 const uploadData = await uploadRes.json();
 
                 console.log('Upload response:', uploadData);
@@ -123,6 +129,14 @@
                     attempts++;
 
                     const statusRes = await fetch(`${API_URL}/api/detect/status/${job_id}`);
+                    
+                    if (!statusRes.ok) {
+                        const errorText = await statusRes.text();
+                        console.warn(`Status check failed (${statusRes.status}):`, errorText);
+                        // Don't throw immediately, maybe it's a transient error
+                        continue; 
+                    }
+                    
                     const statusData = await statusRes.json();
 
                     console.log(`Poll ${attempts}:`, statusData);
