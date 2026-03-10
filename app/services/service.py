@@ -1,19 +1,17 @@
+import logging
 import requests
-import base64
-import hmac
-import hashlib
-from datetime import datetime
 import subprocess
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
+logger = logging.getLogger(__name__)
+DEFAULT_MERGE_GAP = 5.0
 
+class AudDService:
 
-class ACRCloudService:
-
-    def __init__(self, access_key, access_secret, host='identify-us.acrcloud.com'):
-        self.access_key = access_key
-        self.access_secret = access_secret
-        self.host = host
+    def __init__(self, api_token, api_url='https://api.audd.io/'):
+        self.api_token = api_token
+        self.api_url = api_url
 
     def _trim_audio(self, audio_file_path, duration_seconds=15):
         tmp_path = None
@@ -40,7 +38,14 @@ class ACRCloudService:
         cmd = ['ffmpeg', '-i', audio_file_path,
                '-ss', str(start_sec), '-t', str(end_sec - start_sec),
                '-acodec', 'libmp3lame', '-q:a', '9', chunk_path, '-y']
-        subprocess.run(cmd, capture_output=True)
+        result = subprocess.run(cmd, capture_output=True)
+        if result.returncode != 0:
+            if os.path.exists(chunk_path):
+                os.unlink(chunk_path)
+            raise RuntimeError(
+                f"ffmpeg failed extracting {start_sec}-{end_sec}s: "
+                f"{result.stderr.decode(errors='replace')}"
+            )
         return chunk_path
 
     def _get_probe_points(self, seg_start, seg_end, probe_interval=8.0):
@@ -54,20 +59,14 @@ class ACRCloudService:
     def identify(self, audio_file_path):
         try:
             audio_data = self._trim_audio(audio_file_path, duration_seconds=15)
-            timestamp = str(int(datetime.now().timestamp()))
-            signature_string = f"POST\n/v1/identify\n{self.access_key}\naudio\n1\n{timestamp}"
-            signature = base64.b64encode(
-                hmac.new(self.access_secret.encode(), signature_string.encode(), hashlib.sha1).digest()
-            ).decode()
-            files = {
-                'sample': audio_data,
-                'access_key': (None, self.access_key),
-                'timestamp': (None, timestamp),
-                'signature': (None, signature),
-                'data_type': (None, 'audio'),
-                'signature_version': (None, '1'),
+            data = {
+                'api_token': self.api_token,
+                'return': 'apple_music,spotify',
             }
-            response = requests.post(f'https://{self.host}/v1/identify', files=files, timeout=30)
+            files = {
+                'file': audio_data,
+            }
+            response = requests.post(self.api_url, data=data, files=files, timeout=30)
             return self._parse_result(response.json())
         except FileNotFoundError:
             return {'copyrighted': None, 'error': 'File not found'}
@@ -77,34 +76,44 @@ class ACRCloudService:
             return {'copyrighted': None, 'error': f'Error: {str(e)}'}
 
     def _parse_result(self, result):
-        status_block = result.get('status') or result
-        code = status_block.get('code')
-        if code == 0:
-            music_list = result.get('metadata', {}).get('music', [])
-            if music_list:
-                music = music_list[0]
+        status = result.get('status')
+        if status == 'success':
+            result_data = result.get('result')
+            if result_data:
                 return {
                     'copyrighted': True,
                     'music': {
-                        'title': music.get('title'),
-                        'artist': music['artists'][0]['name'] if music.get('artists') else 'Unknown',
-                        'album': music.get('album', {}).get('name', 'Unknown'),
-                        'duration': music.get('duration_ms', 0) // 1000,
-                        'acrid': music.get('acrid'),
+                        'title': result_data.get('title'),
+                        'artist': result_data.get('artist'),
+                        'album': result_data.get('album'),
+                        'duration': result_data.get('duration'),
+                        'audd_id': result_data.get('song_link'), # Using song_link as a unique ID
                     }
                 }
-        elif code == 1:
-            return {'copyrighted': False}
+            else:
+                return {'copyrighted': False}
         else:
-            msg = status_block.get('msg') or result.get('message', 'Unknown error')
+            error = result.get('error', {})
+            msg = error.get('error_message', 'Unknown error')
+            code = error.get('error_code', 'Unknown code')
             return {'copyrighted': None, 'error': f'API Error ({code}): {msg}'}
         return {'copyrighted': None, 'error': f'Invalid response: {result}'}
+    def _probe_single_point(self, audio_file_path, probe_start, probe_end):
+        chunk_path = self._extract_chunk(audio_file_path, probe_start, probe_end)
+        try:
+            result = self.identify(chunk_path)
+        finally:
+            if os.path.exists(chunk_path):
+                os.unlink(chunk_path)
+        return probe_start, probe_end, result
+
 
     def identify_with_yamnet(self, audio_file_path,
                               confidence_threshold=0.1,
                               min_segment_duration=3.0,
                               chroma_threshold=0.35,
-                              detector_instance=None):
+                              detector_instance=None,
+                              max_workers=4):
         from .yamnet_detector import YAMNetDetector
         try:
             if detector_instance is not None:
@@ -120,65 +129,110 @@ class ACRCloudService:
             candidate_segments = detector.get_music_segments(audio_file_path)
             if not candidate_segments:
                 return {"copyrighted": False, "segments": []}
-
-            confirmed_segments = []
+            all_probes = []
             for seg in candidate_segments:
-                start = seg["start"]
-                end = seg["end"]
+                start, end = seg["start"], seg["end"]
                 if end - start < 2.0:
                     continue
                 for probe_start in self._get_probe_points(start, end, probe_interval=8.0):
                     probe_end = min(probe_start + 12.0, end)
-                    chunk_path = self._extract_chunk(audio_file_path, probe_start, probe_end)
-                    try:
-                        result = self.identify(chunk_path)
-                    finally:
-                        if os.path.exists(chunk_path):
-                            os.unlink(chunk_path)
+                    all_probes.append((probe_start, probe_end))
 
-                    if result.get("copyrighted"):
-                        music = result["music"]
-                        acrid = music.get("acrid")
-                        prev_acrid = confirmed_segments[-1].get("music", {}).get("acrid") if confirmed_segments else None
-                        if confirmed_segments and acrid and acrid == prev_acrid:
-                            confirmed_segments[-1]["end"] = round(probe_end, 2)
-                            confirmed_segments[-1]["duration"] = round(probe_end - confirmed_segments[-1]["start"], 2)
-                        else:
-                            confirmed_segments.append({
-                                "start": round(probe_start, 2),
-                                "end": round(probe_end, 2),
-                                "duration": round(probe_end - probe_start, 2),
-                                "music": music
-                            })
+            if not all_probes:
+                return {"copyrighted": False, "segments": []}
+            probe_results = {}
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_probe = {
+                    executor.submit(
+                        self._probe_single_point, audio_file_path, ps, pe
+                    ): (ps, pe)
+                    for ps, pe in all_probes
+                }
+                for future in as_completed(future_to_probe):
+                    ps, pe = future_to_probe[future]
+                    try:
+                        probe_start, probe_end, result = future.result()
+                        probe_results[probe_start] = (probe_end, result)
+                    except Exception as e:
+                        logger.warning(f"Probe {ps}-{pe}s failed: {e}")
+                        probe_results[ps] = (pe, {'copyrighted': None, 'error': str(e)})
+
+            confirmed_segments = []
+            for probe_start in sorted(probe_results.keys()):
+                probe_end, result = probe_results[probe_start]
+                if not result.get("copyrighted"):
+                    continue
+                music = result["music"]
+                audd_id = music.get("audd_id")
+                prev_id = (
+                    confirmed_segments[-1].get("music", {}).get("audd_id")
+                    if confirmed_segments else None
+                )
+                if confirmed_segments and audd_id and audd_id == prev_id:
+                    confirmed_segments[-1]["end"] = round(probe_end, 2)
+                    confirmed_segments[-1]["duration"] = round(
+                        probe_end - confirmed_segments[-1]["start"], 2
+                    )
+                else:
+                    confirmed_segments.append({
+                        "start": round(probe_start, 2),
+                        "end": round(probe_end, 2),
+                        "duration": round(probe_end - probe_start, 2),
+                        "music": music,
+                    })
 
             return {"copyrighted": len(confirmed_segments) > 0, "segments": confirmed_segments}
+
         except Exception as e:
             import traceback
             traceback.print_exc()
             return {"copyrighted": None, "error": str(e)}
 
-    def identify_with_timeline(self, audio_file_path, chunk_seconds=10, overlap_seconds=2):
+    def identify_with_timeline(self, audio_file_path, chunk_seconds=10, overlap_seconds=2,max_workers=4):
         try:
             cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
                    "-of", "default=noprint_wrappers=1:nokey=1", audio_file_path]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            total_duration = float(result.stdout.strip())
-            segments = []
+            probe = subprocess.run(cmd, capture_output=True, text=True)
+            total_duration = float(probe.stdout.strip())
             step = chunk_seconds - overlap_seconds
-            current = 0
+            probe_windows = []
+            current = 0.0
             while current < total_duration:
-                chunk_path = self._extract_chunk(audio_file_path, current, current + chunk_seconds)
-                result = self.identify(chunk_path)
-                os.unlink(chunk_path)
-                if result.get("copyrighted"):
-                    segments.append({"start": current, "end": current + chunk_seconds, "music": result.get("music")})
+                probe_windows.append((current, min(current + chunk_seconds, total_duration)))
                 current += step
-            merged = self._merge_segments(segments)
+            probe_results = {}
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_window = {
+                    executor.submit(
+                        self._probe_single_point, audio_file_path, start, end
+                    ): (start, end)
+                    for start, end in probe_windows
+                }
+                for future in as_completed(future_to_window):
+                    start, end = future_to_window[future]
+                    try:
+                        ps, pe, result = future.result()
+                        probe_results[ps] = (pe, result)
+                    except Exception as e:
+                        logger.warning(f"Timeline probe {start}-{end}s failed: {e}")
+
+            segments = []
+            for start in sorted(probe_results.keys()):
+                end, result = probe_results[start]
+                if result.get("copyrighted"):
+                    segments.append({
+                        "start": start,
+                        "end": end,
+                        "music": result.get("music"),
+                    })
+
+            merged = self.merge_overlapping_segments(segments)
             return {"copyrighted": len(merged) > 0, "segments": merged}
+
         except Exception as e:
             return {"copyrighted": None, "error": str(e)}
 
-    def merge_overlapping_segments(segments):
+    def merge_overlapping_segments(self,segments,gap_threshold=DEFAULT_MERGE_GAP):
         if not segments:
             return []
 
@@ -190,17 +244,17 @@ class ACRCloudService:
             current_music = current.get("music", {})
             last_music = last.get("music", {})
 
-            current_acrid = current_music.get("acrid")
-            last_acrid = last_music.get("acrid")
+            current_id = current_music.get("audd_id")
+            last_id = last_music.get("audd_id")
 
-            same_acrid = current_acrid and last_acrid and current_acrid == last_acrid
+            same_id = current_id and last_id and current_id == last_id
             same_artist = current_music.get("artist") == last_music.get("artist")
             same_title = (
                 current_music.get("title", "").strip().lower()
                 == last_music.get("title", "").strip().lower()
             )
 
-            if time_close and (same_acrid or (same_artist and same_title)):
+            if time_close and (same_id or (same_artist and same_title)):
                 last["end"] = max(last["end"], current["end"])
                 last["duration"] = round(last["end"] - last["start"], 2)
             else:

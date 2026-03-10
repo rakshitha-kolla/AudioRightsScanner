@@ -11,8 +11,8 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .services.service import ACRCloudService
-from .config import ACR_ACCESS_KEY, ACR_ACCESS_SECRET, ACR_HOST, UPLOAD_FOLDER, RESULTS_FOLDER, ALLOWED_EXTENSIONS
+from .services.service import AudDService
+from .config import AUDD_API_TOKEN, UPLOAD_FOLDER, RESULTS_FOLDER, ALLOWED_EXTENSIONS
 from .utils import FileHandler, ResultHandler
 
 logging.basicConfig(level=logging.INFO)
@@ -42,9 +42,9 @@ app.add_middleware(
 )
 
 try:
-    acr_service = ACRCloudService(ACR_ACCESS_KEY, ACR_ACCESS_SECRET, ACR_HOST)
+    audd_service = AudDService(AUDD_API_TOKEN)
 except Exception as e:
-    logger.error(f"Failed to initialize ACRCloud: {e}")
+    logger.error(f"Failed to initialize AudD: {e}")
 
 FileHandler.ensure_folders()
 
@@ -82,7 +82,7 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "acr_cloud": "configured" if (ACR_ACCESS_KEY and ACR_ACCESS_SECRET) else "not_configured",
+        "audd_api": "configured" if AUDD_API_TOKEN else "not_configured",
         "yamnet_available": YAMNET_AVAILABLE,
         "version": "3.0.0"
     }
@@ -98,12 +98,12 @@ def run_detection_job(job_id, file_path, filename):
             while yamnet_detector_instance is None and waited < 60:
                 time.sleep(3)
                 waited += 3
-            detection_result = acr_service.identify_with_yamnet(
+            detection_result = audd_service.identify_with_yamnet(
                 file_path, detector_instance=yamnet_detector_instance
             )
             detection_result["detection_method"] = "yamnet"
         else:
-            detection_result = acr_service.identify_with_timeline(file_path)
+            detection_result = audd_service.identify_with_timeline(file_path)
             detection_result["detection_method"] = "timeline"
 
         result_file = ResultHandler.save_result(filename, detection_result)
