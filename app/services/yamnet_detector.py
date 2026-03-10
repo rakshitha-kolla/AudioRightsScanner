@@ -23,7 +23,6 @@ class YAMNetDetector:
                  background_music_threshold=0.05,
                  min_segment_duration=2.0,
                  merge_gap=2.0):
-        # Default to project root (one level up from 'app' directory)
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.model_path = model_path or os.path.join(root_dir, 'yamnet.tflite')
         self.class_map_path = class_map_path or os.path.join(root_dir, 'yamnet_class_map.csv')
