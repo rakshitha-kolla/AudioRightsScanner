@@ -66,7 +66,7 @@ class AudDService:
             files = {
                 'file': audio_data,
             }
-            response = requests.post(self.api_url, data=data, files=files, timeout=30)
+            response = requests.post(self.api_url, data=data, files=files, timeout=60)
             return self._parse_result(response.json())
         except FileNotFoundError:
             return {'copyrighted': None, 'error': 'File not found'}
