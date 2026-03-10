@@ -4,7 +4,13 @@ import subprocess
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+<<<<<<< HEAD
 logger = logging.getLogger(__name__)
+=======
+import logging
+logger = logging.getLogger(__name__)
+
+>>>>>>> a77c9c7b7f7cec476ecd3f94987e561fceb4eaae
 DEFAULT_MERGE_GAP = 5.0
 
 class AudDService:
@@ -108,6 +114,15 @@ class AudDService:
         return probe_start, probe_end, result
 
 
+    def _probe_single_point(self, audio_file_path, probe_start, probe_end):
+        chunk_path = self._extract_chunk(audio_file_path, probe_start, probe_end)
+        try:
+            result = self.identify(chunk_path)
+        finally:
+            if os.path.exists(chunk_path):
+                os.unlink(chunk_path)
+        return probe_start, probe_end, result
+
     def identify_with_yamnet(self, audio_file_path,
                               confidence_threshold=0.1,
                               min_segment_duration=3.0,
@@ -163,12 +178,21 @@ class AudDService:
                 if not result.get("copyrighted"):
                     continue
                 music = result["music"]
+<<<<<<< HEAD
                 audd_id = music.get("audd_id")
                 prev_id = (
                     confirmed_segments[-1].get("music", {}).get("audd_id")
                     if confirmed_segments else None
                 )
                 if confirmed_segments and audd_id and audd_id == prev_id:
+=======
+                acrid = music.get("acrid")
+                prev_acrid = (
+                    confirmed_segments[-1].get("music", {}).get("acrid")
+                    if confirmed_segments else None
+                )
+                if confirmed_segments and acrid and acrid == prev_acrid:
+>>>>>>> a77c9c7b7f7cec476ecd3f94987e561fceb4eaae
                     confirmed_segments[-1]["end"] = round(probe_end, 2)
                     confirmed_segments[-1]["duration"] = round(
                         probe_end - confirmed_segments[-1]["start"], 2
@@ -195,8 +219,13 @@ class AudDService:
             probe = subprocess.run(cmd, capture_output=True, text=True)
             total_duration = float(probe.stdout.strip())
             step = chunk_seconds - overlap_seconds
+<<<<<<< HEAD
             probe_windows = []
             current = 0.0
+=======
+            current = 0.0
+            probe_windows = []
+>>>>>>> a77c9c7b7f7cec476ecd3f94987e561fceb4eaae
             while current < total_duration:
                 probe_windows.append((current, min(current + chunk_seconds, total_duration)))
                 current += step
@@ -220,11 +249,15 @@ class AudDService:
             for start in sorted(probe_results.keys()):
                 end, result = probe_results[start]
                 if result.get("copyrighted"):
+<<<<<<< HEAD
                     segments.append({
                         "start": start,
                         "end": end,
                         "music": result.get("music"),
                     })
+=======
+                    segments.append({"start": start, "end": end, "music": result.get("music")})
+>>>>>>> a77c9c7b7f7cec476ecd3f94987e561fceb4eaae
 
             merged = self.merge_overlapping_segments(segments)
             return {"copyrighted": len(merged) > 0, "segments": merged}
